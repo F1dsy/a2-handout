@@ -28,40 +28,63 @@ envLookup = lookup
 
 type Error = String
 
-newtype EvalM a = EvalM (Env -> [String] -> Either Error ([String], a))
+type State = ([String], [(Val, Val)])
+
+newtype EvalM a = EvalM (Env -> State -> (State, Either Error a))
 
 instance Functor EvalM where
   fmap = liftM
 
 instance Applicative EvalM where
-  pure x = EvalM $ \_env s -> Right (s, x)
+  pure x = EvalM $ \_env s -> (s, Right x)
   (<*>) = ap
 
 instance Monad EvalM where
   EvalM x >>= f = EvalM $ \env s ->
     case x env s of
-      Left err -> Left err
-      Right (s', x') ->
+      (s', Left err) -> (s', Left err)
+      (s', Right x') ->
         let EvalM y = f x'
          in y env s'
 
 askEnv :: EvalM Env
-askEnv = EvalM $ \env s -> Right (s, env)
+askEnv = EvalM $ \env s -> (s, Right env)
 
 localEnv :: (Env -> Env) -> EvalM a -> EvalM a
 localEnv f (EvalM m) = EvalM $ \env -> m (f env)
 
 failure :: String -> EvalM a
-failure s = EvalM $ \_env _ -> Left s
+failure s = EvalM $ \_env st -> (st, Left s)
 
 catch :: EvalM a -> EvalM a -> EvalM a
 catch (EvalM m1) (EvalM m2) = EvalM $ \env s ->
   case m1 env s of
-    Left _ -> m2 env s
-    Right (s', x) -> Right (s', x)
+    (s', Left _) -> m2 env s'
+    (s', Right x) -> (s', Right x)
 
+--  traceShow ("Before: " ++ show env) $
 runEval :: EvalM a -> ([String], Either Error a)
-runEval (EvalM m) = ([], m [] envEmpty)
+-- a : (generic type)
+-- m :: Env -> State -> (State, Either Error a)
+-- runEval (EvalM m) = m envEmpty ()
+runEval (EvalM m) =
+  let ((st, _), v) = m envEmpty ([], [])
+   in (st, v)
+
+evalPrint :: String -> EvalM ()
+evalPrint str = EvalM $ \_env s -> ((fst s ++ [str], snd s), Right ())
+
+evalKvGet :: Val -> EvalM Val
+evalKvGet k = EvalM $ \_env (st, kv) ->
+  let v = lookup k kv
+   in ( (st, kv),
+        case v of
+          Just v' -> Right v'
+          Nothing -> Left $ "Invalid key: " ++ show k
+      )
+
+evalKvPut :: Val -> Val -> EvalM ()
+evalKvPut k v = EvalM $ \_env (st, kv) -> ((st, (k, v) : kv), Right ())
 
 evalIntBinOp :: (Integer -> Integer -> EvalM Integer) -> Exp -> Exp -> EvalM Val
 evalIntBinOp f e1 e2 = do
@@ -142,4 +165,23 @@ eval (Apply e1 e2) = do
       failure "Cannot apply non-function"
 eval (TryCatch e1 e2) =
   eval e1 `catch` eval e2
-eval (Print v e) = pure $ ValInt 2
+eval (Print str e1) = do
+  e <- eval e1
+  let str' =
+        str
+          ++ ": "
+          ++ ( case e of
+                 ValInt n -> show n
+                 ValBool b -> show b
+                 ValFun {} -> "#<fun>"
+             )
+  evalPrint str'
+  pure e
+eval (KvGet a) = do
+  a' <- eval a
+  evalKvGet a'
+eval (KvPut k v) = do
+  k' <- eval k
+  v' <- eval v
+  evalKvPut k' v'
+  pure v'

@@ -2,6 +2,7 @@ module APL.Eval_Tests (tests) where
 
 import APL.AST (Exp (..))
 import APL.Eval (Error, Val (..), eval, runEval)
+import Debug.Trace (trace)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 
@@ -85,20 +86,58 @@ evalTests =
       testCase "TryCatch" $
         eval'
           (TryCatch (Div (CstInt 7) (CstInt 0)) (CstBool True))
-          @?= Right (ValBool True)
+          @?= Right (ValBool True),
+      testCase "TryCatch shows state goes to catch" $
+        eval'
+          ( Let
+              "x"
+              (KvPut (CstInt 0) (CstBool True))
+              ( TryCatch
+                  ( Let
+                      "x"
+                      (KvPut (CstInt 0) (CstBool False))
+                      (KvGet (CstInt 1))
+                  )
+                  (KvGet (CstInt 0))
+              )
+          )
+          @?= Right (ValBool False)
     ]
 
 printTests :: TestTree
 printTests =
   testGroup
     "Task 1: Printing"
-    []
+    [ testCase "Print ValInt" $
+        eval'' (Print "foo" $ CstInt 2)
+          @?= (["foo: 2"], Right (ValInt 2)),
+      testCase
+        "Print ValInt 2"
+        $ eval'' (Let "x" (Print "foo" $ CstInt 2) (Print "bar" $ CstInt 3)) @?= (["foo: 2", "bar: 3"], Right (ValInt 3)),
+      testCase
+        "Print ValBool True"
+        $ eval'' (Print "foo" $ CstBool True)
+          @?= (["foo: True"], Right (ValBool True)),
+      testCase
+        "Print Unknown variable"
+        $ eval'' (Let "x" (Print "foo" $ CstInt 2) (Var "bar"))
+          @?= (["foo: 2"], Left "Unknown variable: bar")
+    ]
 
 kvTests :: TestTree
 kvTests =
   testGroup
     "Task 2: Key-value store"
-    []
+    [ testCase "KvPut then KvGet" $
+        eval'' (Let "x" (KvPut (CstInt 0) (CstBool True)) (KvGet (CstInt 0)))
+          @?= ([], Right (ValBool True)),
+      testCase "KvPut then KvGet on invalid key" $
+        eval'' (Let "x" (KvPut (CstInt 0) (CstBool True)) (KvGet (CstInt 1)))
+          @?= ([], Left "Invalid key: ValInt 1"),
+      testCase "Overide KvPut then KvGet" $
+        eval'' (Let "x" (KvPut (CstInt 0) (CstBool True)) (Let "y" (KvPut (CstInt 0) (CstBool False)) (KvGet (CstInt 0))))
+          @?= ([], Right (ValBool False))
+    ]
 
 tests :: TestTree
 tests = testGroup "Evaluation" [evalTests, printTests, kvTests]
