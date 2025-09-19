@@ -24,7 +24,6 @@ tests =
   testGroup
     "Checking"
     [ testNeg (Var "x"),
-      -- testPos (Var "y"),
       testNeg (Let "x" (CstInt 0) (Var "y")),
       testPos (Let "x" (CstInt 0) (Var "x")),
       testNeg (Let "x" (Var "z") (Var "x")),

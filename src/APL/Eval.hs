@@ -62,11 +62,7 @@ catch (EvalM m1) (EvalM m2) = EvalM $ \env s ->
     (s', Left _) -> m2 env s'
     (s', Right x) -> (s', Right x)
 
---  traceShow ("Before: " ++ show env) $
 runEval :: EvalM a -> ([String], Either Error a)
--- a : (generic type)
--- m :: Env -> State -> (State, Either Error a)
--- runEval (EvalM m) = m envEmpty ()
 runEval (EvalM m) =
   let ((st, _), v) = m envEmpty ([], [])
    in (st, v)

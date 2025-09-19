@@ -2,7 +2,6 @@ module APL.Eval_Tests (tests) where
 
 import APL.AST (Exp (..))
 import APL.Eval (Error, Val (..), eval, runEval)
-import Debug.Trace (trace)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 
